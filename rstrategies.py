@@ -5,6 +5,7 @@ from rpython.rlib import jit
 class StrategyMetaclass(type):
     def __new__(self, name, bases, attrs):
         attrs['_is_strategy'] = False
+        attrs['_specializations'] = []
         return super(StrategyMetaclass, self).__new__(self, name, bases, attrs)
 
 def collect_subclasses(cls):
@@ -39,11 +40,37 @@ class StrategyFactory(object):
             def initiate_copy_into(self, other):
                 getattr(other, funcname)(self)
             strategy_class.initiate_copy_into = initiate_copy_into
+        self.order_strategies()
     
     def decorate_strategies(self, transitions):
         "NOT_RPYTHON"
         for strategy_class, generalized in transitions.items():
             strategy(generalized)(strategy_class)
+    
+    def order_strategies(self):
+        unordered = self.strategies
+        self.strategies = []
+        while len(unordered) > 0:
+            def flatten_tree_into(strategy):
+                if strategy not in self.strategies:
+                    self.strategies.insert(0, strategy)
+                    unordered.remove(strategy)
+                    if strategy._specializations:
+                        for specialization in strategy._specializations:
+                            flatten_tree_into(specialization)
+            strategy = unordered[0]
+            root = self.get_generalization_root(strategy)
+            flatten_tree_into(root)
+    
+    def get_generalization_root(self, root):
+        strategy = root
+        visited = set()
+        while strategy._generalizations:
+            visited.add(strategy)
+            strategy = strategy._generalizations[0]
+            if strategy in visited:
+                raise Exception("Cycle in generalization-tree between %s and %s" % (root, strategy))
+        return strategy
     
     # Instantiate new_strategy_type with size, replace old_strategy with it,
     # and return the new instance
@@ -97,7 +124,10 @@ def strategy(generalize=None):
                         return strategy
                 raise Exception("Could not find generalized strategy for %s coming from %s" % (value, self))
             strategy_class.generalized_strategy_for = generalized_strategy_for
+            for generalized in generalize:
+                generalized._specializations.append(strategy_class)
         strategy_class._is_strategy = True
+        strategy_class._generalizations = generalize
         return strategy_class
     return decorator
 
