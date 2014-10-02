@@ -308,7 +308,26 @@ def test_TaggingValue_not_storable():
 # === Test Weak Strategy
 # TODO
 
+# === Other tests
+
 def test_metaclass():
     assert VarsizeGenericStrategy._is_strategy == True
     assert NonStrategy._is_strategy == False
     assert IntegerOrNilStrategy._is_strategy == True
+
+def test_optimized_strategy_switch(monkeypatch):
+    s = NilStrategy(5)
+    l = W_List(s)
+    s.copied = 0
+    def copy_from_default(self, other):
+        assert False, "The default copy_from() routine should not be called!"
+    def copy_from_special(self, other):
+        s.copied += 1
+    
+    monkeypatch.setattr(AbstractStrategy, "copy_from_NilStrategy", copy_from_special)
+    try:
+        factory.switch_strategy(s, IntegerOrNilStrategy)
+    finally:
+        monkeypatch.undo()
+    assert s.copied == 1, "Optimized switching routine not called exactly one time."
+    

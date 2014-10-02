@@ -28,19 +28,21 @@ class StrategyFactory(object):
             if hasattr(strategy_class, "_is_strategy") and strategy_class._is_strategy:
                 strategy_class._strategy_instance = self.instantiate_empty(strategy_class)
                 self.strategies.append(strategy_class)
-            
-            # Patch root class: Add default handler for visitor
-            def copy_from_OTHER(self, other):
-                self.copy_from(other)
-            funcname = "copy_from_" + strategy_class.__name__
-            copy_from_OTHER.func_name = funcname
-            setattr(root_class, funcname, copy_from_OTHER)
-            
-            # Patch strategy class: Add polymorphic visitor function
-            def initiate_copy_into(self, other):
-                getattr(other, funcname)(self)
-            strategy_class.initiate_copy_into = initiate_copy_into
+            self.patch_strategy_class(strategy_class, root_class)
         self.order_strategies()
+    
+    def patch_strategy_class(self, strategy_class, root_class):
+        # Patch root class: Add default handler for visitor
+        def copy_from_OTHER(self, other):
+            self.copy_from(other)
+        funcname = "copy_from_" + strategy_class.__name__
+        copy_from_OTHER.func_name = funcname
+        setattr(root_class, funcname, copy_from_OTHER)
+        
+        # Patch strategy class: Add polymorphic visitor function
+        def initiate_copy_into(self, other):
+            getattr(other, funcname)(self)
+        strategy_class.initiate_copy_into = initiate_copy_into
     
     def decorate_strategies(self, transitions):
         "NOT_RPYTHON"
@@ -48,29 +50,22 @@ class StrategyFactory(object):
             strategy(generalized)(strategy_class)
     
     def order_strategies(self):
-        unordered = self.strategies
-        self.strategies = []
-        while len(unordered) > 0:
-            def flatten_tree_into(strategy):
-                if strategy not in self.strategies:
-                    self.strategies.insert(0, strategy)
-                    unordered.remove(strategy)
-                    if strategy._specializations:
-                        for specialization in strategy._specializations:
-                            flatten_tree_into(specialization)
-            strategy = unordered[0]
-            root = self.get_generalization_root(strategy)
-            flatten_tree_into(root)
-    
-    def get_generalization_root(self, root):
-        strategy = root
-        visited = set()
-        while strategy._generalizations:
-            visited.add(strategy)
-            strategy = strategy._generalizations[0]
-            if strategy in visited:
-                raise Exception("Cycle in generalization-tree between %s and %s" % (root, strategy))
-        return strategy
+        "NOT_RPYTHON"
+        def get_generalization_depth(strategy, visited=None):
+            if visited is None:
+                visited = set()
+            if strategy._generalizations:
+                if strategy in visited:
+                    raise Exception("Cycle in generalization-tree of %s" % strategy)
+                visited.add(strategy)
+                depth = 0
+                for generalization in strategy._generalizations:
+                    other_depth = get_generalization_depth(generalization, visited)
+                    depth = max(depth, other_depth)
+                return depth + 1
+            else:
+                return 0
+        self.strategies.sort(key=get_generalization_depth, reverse=True)
     
     # Instantiate new_strategy_type with size, replace old_strategy with it,
     # and return the new instance
@@ -185,8 +180,8 @@ class EmptyStrategy(AbstractStrategy):
         return False
     
 class SingleValueStrategy(AbstractStrategy):
-    _immutable_fields_ = ["_size", "val"]
-    _attrs_ = ["_size", "val"]
+    _immutable_fields_ = ["_size"]
+    _attrs_ = ["_size"]
     # == Required:
     # See AbstractStrategy
     # check_index_*(...) - use mixin SafeIndexingMixin or UnsafeIndexingMixin
@@ -194,19 +189,18 @@ class SingleValueStrategy(AbstractStrategy):
     
     def init_strategy(self, initial_size):
         self._size = initial_size
-        self.val = self.value()
     def fetch(self, index0):
         self.check_index_fetch(index0)
-        return self.val
+        return self.value()
     def store(self, index0, value):
         self.check_index_store(index0)
-        if self.val is value:
+        if self.value() is value:
             return
         self.cannot_handle_value(index0, value)
     def size(self):
         return self._size
     def check_can_handle(self, value):
-        return value is self.val
+        return value is self.value()
     
 # ============== Basic strategies with storage ==============
 
