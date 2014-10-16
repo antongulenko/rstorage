@@ -1,15 +1,28 @@
 
 import re, os, sys, operator
 
-# TODO generalize this - read all operations occuring in the logfile
-OPERATIONS = ["Filledin", "Initialized", "Switched"]
+OPERATION_MAPPINGS_RSQUEAK = {
+    "Filledin": " Image Loading",
+    "Initialized": " Object Creation",
+}
 
-IMAGE_LOADING_STORAGE = " Image Loading Storage" # Space to be sorted to the beginning
-OBJECT_CREATION_STORAGE = " Object Creation Storage"
+OPERATION_MAPPINGS_TOPAZ = {
+    "Created": " Array Creation",
+}
+
+OPERATION_MAPPINGS = OPERATION_MAPPINGS_TOPAZ
+
+STORAGE_NODE_SUBSTRING = "Strategy"
+# STORAGE_NODE_SUBSTRING = "Storage"
 
 # ====================================================================
 # ======== Logfile parsing
 # ====================================================================
+
+def percent(part, total):
+    if total == 0:
+        return 0
+    return float(part)*100 / total
 
 def parse(filename, flags, callback):
     parsed_entries = 0
@@ -59,17 +72,15 @@ class LogEntry(object):
         self.classnames = set(classnames) if classnames else set()
         
         if old_storage is None:
-            if operation == "Filledin":
-                old_storage = IMAGE_LOADING_STORAGE
-            elif operation == "Initialized":
-                old_storage = OBJECT_CREATION_STORAGE
+            if operation in OPERATION_MAPPINGS:
+                old_storage = OPERATION_MAPPINGS[operation]
             else:
-                assert False, "old_storage has to be available in a Switched operation"
+                assert False, "old_storage must be available for operation %s" % operation
         self.old_storage = str(old_storage)
         assert old_storage != new_storage, "old and new storage identical in log entry: %s" % self
     
-    def clear_old_storage(self):
-        if self.old_storage in (IMAGE_LOADING_STORAGE, OBJECT_CREATION_STORAGE):
+    def remove_old_storage(self):
+        if self.old_storage in OPERATION_MAPPINGS.values():
             self.old_storage = None
     
     def full_key(self):
@@ -104,11 +115,11 @@ class Operations(object):
         else:
             avg_slots = float(self.slots) / self.objects
         if total is not None and total.slots != 0:
-            percent_slots = " (%.1f%%)" % (float(self.slots)*100 / total.slots)
+            percent_slots = " (%.1f%%)" % percent(self.slots, total.slots)
         else:
             percent_slots = ""
         if total is not None and total.objects != 0:
-            percent_objects = " (%.1f%%)" % (float(self.objects)*100 / total.objects)
+            percent_objects = " (%.1f%%)" % percent(self.objects, total.objects)
         else:
             percent_objects = ""
         slots = format(self.slots, ",d")
@@ -179,14 +190,10 @@ class ClassOperations(object):
 class StorageEdge(object):
     
     def __init__(self, operation="None", origin=None, target=None):
-        assert operation == "None" or operation in OPERATIONS, "Unknown operation %s" % operation
         self.operation = operation
         self.classes = ClassOperations()
         self.origin = origin
         self.target = target
-        
-        if self.origin is not None and self.origin is self.target and self.operation != "Filledin":
-            import pdb; pdb.set_trace()
     
     def full_key(self):
         return (self.operation, self.origin.name, self.target.name)
@@ -208,7 +215,7 @@ class StorageEdge(object):
         entries = []
         for classname, ops in self.classes.classes.items():
             entry = LogEntry(self.operation, self.origin.name, self.target.name, classname, ops.slots, ops.objects, ops.element_classnames)
-            entry.clear_old_storage()
+            entry.remove_old_storage()
             entries.append(entry)
         return entries
     
@@ -301,11 +308,15 @@ class StorageNode(object):
     def __lt__(self, other):
         return self.name < other.name
     
+    def is_nonstorage_node(self):
+        return STORAGE_NODE_SUBSTRING not in self.name and self.name not in OPERATION_MAPPINGS.values()
+    
 class StorageGraph(object):
     
     def __init__(self):
         self.nodes = {}
         self.edges = {}
+        self.operations = set()
     
     def node(self, name):
         if name not in self.nodes:
@@ -336,6 +347,7 @@ class StorageGraph(object):
         assert len(visited_edges) == len(self.edges.values()), "Not all of graph's edges visited."
     
     def add_log_entry(self, log_entry):
+        self.operations.add(log_entry.operation)
         key = log_entry.full_key()
         if key not in self.edges:
             edge = StorageEdge(log_entry.operation, self.node(log_entry.old_storage), self.node(log_entry.new_storage))
@@ -374,8 +386,8 @@ class StorageGraph(object):
             self.edges[edge.full_key()] = edge
         self.assert_sanity()
     
-    def split_nodes(self, new_name=None):
-        nodes = filter(lambda node: "Storage" not in node.name, self.nodes.values())
+    def collapse_nonstorage_nodes(self, new_name=None):
+        nodes = filter(StorageNode.is_nonstorage_node, self.nodes.values())
         self.collapse_nodes(nodes, new_name)
     
     def sorted_nodes(self):
@@ -398,17 +410,17 @@ def make_graph(logfile, flags):
 def command_summarize(logfile, flags):
     graph = make_graph(logfile, flags)
     if not flags.allstorage:
-        graph.split_nodes()
+        graph.collapse_nonstorage_nodes()
     for node in graph.sorted_nodes():
-        node.print_summary(flags)
+        node.print_summary(flags, graph.operations)
 
-def StorageNode_print_summary(self, flags):
+def StorageNode_print_summary(self, flags, all_operations):
     print "\n%s:" % self.name
     sum = StorageEdge()
     total_incoming = self.sum_all_incoming().total() if flags.percent else None
     
     print "\tIncoming:"
-    for operation in OPERATIONS:
+    for operation in all_operations:
         if flags.detailed:
             edges = [ (edge.origin.name, edge) for edge in self.incoming_edges(operation) ]
         else:
@@ -418,7 +430,7 @@ def StorageNode_print_summary(self, flags):
             sum += edge
     
     print "\tOutgoing:"
-    for operation in OPERATIONS:
+    for operation in all_operations:
         if flags.detailed:
             edges = [ (edge.target.name, edge) for edge in self.outgoing_edges(operation) ]
         else:
@@ -470,7 +482,7 @@ def dot_string(graph, flags):
     result = "digraph G {"
     incoming_cache = {}
     if not flags.allstorage:
-        graph.split_nodes("Other")
+        graph.collapse_nonstorage_nodes("Other")
     
     for node in graph.nodes.values():
         incoming = node.sum_all_incoming().total()
@@ -480,35 +492,48 @@ def dot_string(graph, flags):
             # TODO This is a special node. Hacky way to find out.
             incoming_cache[node.name] = outgoing
             shape = ",shape=box"
-            label = "\nObjects: %s" % format(outgoing.objects, ",.0f")
-            label += "\nSlots: %s" % format(outgoing.slots, ",.0f")
+            if flags.noslots:
+                label = "\n%s" % format(outgoing.objects, ",.0f")
+            else:
+                label = "\nObjects: %s" % format(outgoing.objects, ",.0f")
+                label += "\nSlots: %s" % format(outgoing.slots, ",.0f")
         else:
             incoming_cache[node.name] = incoming
             shape = ""
             label = "\nIncoming objects: %s" % format(incoming.objects, ",.0f")
-            label += "\nIncoming slots: %s" % format(incoming.slots, ",.0f")
+            if not flags.noslots:
+                label += "\nIncoming slots: %s" % format(incoming.slots, ",.0f")
             if remaining.objects != incoming.objects:
                 if flags.percent and incoming.objects != 0:
-                    percent_remaining_objects = " (%.1f%%)" % (float(remaining.objects)*100 / incoming.objects)
-                    percent_remaining_slots = " (%.1f%%)" % (float(remaining.slots)*100 / incoming.slots)
+                    percent_remaining_objects = " (%.1f%%)" % percent(remaining.objects, incoming.objects)
+                    percent_remaining_slots = " (%.1f%%)" % percent(remaining.slots, incoming.slots)
                 else:
                     percent_remaining_objects = percent_remaining_slots = ""
                 label += "\nRemaining objects: %s%s" % (format(remaining.objects, ",.0f"), percent_remaining_objects)
-                label += "\nRemaining slots: %s%s" % (format(remaining.slots, ",.0f"), percent_remaining_slots)
+                if not flags.noslots:
+                    label += "\nRemaining slots: %s%s" % (format(remaining.slots, ",.0f"), percent_remaining_slots)
         result += "%s [label=\"%s%s\"%s];" % (node.name.replace(" ", "_"), node.name, label, shape)
     
     for edge in graph.edges.values():
         total = edge.total()
         str_objects = "%s objects" % format(total.objects, ",.0f")
-        str_slots = "%s slots" % format(total.slots, ",.0f")
+        str_slots = "\n%s slots" % format(total.slots, ",.0f")
         incoming = incoming_cache[edge.origin.name]
         if flags.percent and incoming.objects != 0:
-            str_objects += " (%.1f%%)" % (float(total.objects)*100 / incoming.objects)
-            str_slots += " (%.1f%%)" % (float(total.slots)*100 / incoming.slots)
+            str_objects += " (%.1f%%)" % percent(total.objects, incoming.objects)
+            str_slots += " (%.1f%%)" % percent(total.slots, incoming.slots)
+        if flags.noslots:
+            str_slots = ""
+        else:
+            str_slots += "\n%.1f slots per object" % (total.slots / total.objects)
         
         target_node = edge.target.name.replace(" ", "_")
         source_node = edge.origin.name.replace(" ", "_")
-        result += "%s -> %s [label=\"%s\n%s\n%.1f slots per object\"];" % (source_node, target_node, str_objects, str_slots, total.slots / total.objects)
+        result += "%s -> %s [label=\"%s%s\"];" % (source_node, target_node, str_objects, str_slots)
+    
+    # TODO hack
+    if flags.noslots:
+        result = result.replace("Objects", "").replace("objects", "").replace("  ", " ").replace(" :", ":")
     
     result += "}"
     return result
@@ -567,6 +592,7 @@ def main(argv):
         ('allstorage', '-a'),
         ('detailed', '-d'),
         ('classes', '-c'),
+        ('noslots', '-s')
     ])
     
     command_prefix = "command_"
