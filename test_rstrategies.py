@@ -95,8 +95,7 @@ class WeakGenericStrategy(AbstractStrategy):
     
 class VarsizeGenericStrategy(AbstractStrategy):
     import_from_mixin(rs.GenericStrategy)
-    import_from_mixin(rs.VariableSizeMixin)
-    import_from_mixin(rs.SafeAutoresizeMixin)
+    import_from_mixin(rs.SafeIndexingMixin)
     def default_value(self): return w_nil
 
 class IntegerStrategy(AbstractStrategy):
@@ -220,33 +219,13 @@ def test_store_IntegerOrNil():
     do_test_store(IntegerOrNilStrategy, stored_value=W_Integer(100))
     do_test_store(IntegerOrNilStrategy, stored_value=w_nil)
 
-# === Test Varsize
+# === Test Delete
 
-def test_Varsize_grow_shrink():
-    s = VarsizeGenericStrategy(10)
-    s.grow(3)
-    check_contents(s, [w_nil] * 13)
-    s.grow(4)
-    check_contents(s, [w_nil] * 17)
-    s.shrink(5)
-    check_contents(s, [w_nil] * 12)
-    s.shrink(10)
-    check_contents(s, [w_nil] * 2)
+# TODO
 
-def test_Varsize_bad_grow_shrink():
-    s = VarsizeGenericStrategy(10)
-    py.test.raises(ValueError, s.grow, -4)
-    py.test.raises(ValueError, s.shrink, -4)
-    py.test.raises(ValueError, s.shrink, 13)
+# === Test Insert
 
-def test_Varsize_autogrow():
-    s = VarsizeGenericStrategy(10)
-    obj = W_Object()
-    s.store(15, obj)
-    assert s.size() == 16
-    assert s.fetch(15) is obj
-    s.store(15, w_nil)
-    assert s.size() == 16
+# TODO
 
 # === Test Transitions
 
@@ -304,6 +283,8 @@ def test_TaggingValue_not_storable():
 
 # TODO - Add VarsizeInteger, Übergang nach Empty etc
 # - store maxint in IntegerOrNil
+
+# TODO Test slice, fetch_all, append, pop
 
 # === Test Weak Strategy
 # TODO
