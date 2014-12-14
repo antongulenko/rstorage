@@ -18,19 +18,40 @@ class W_Integer(W_AbstractObject):
         return isinstance(other, W_Integer) and self.value == other.value
 
 class W_List(W_AbstractObject):
-    def __init__(self, strategy=None):
-        self.strategy = strategy
+    rs.make_accessors()
+    def __init__(self, strategy=None, size=0, elements=None):
         if strategy:
-            strategy.w_list = self
+            factory.set_initial_strategy(self, strategy, size, elements)
     def fetch(self, i):
         assert self.strategy
-        return self.strategy.fetch(i)
+        return self.strategy.fetch(self, i)
     def store(self, i, value):
         assert self.strategy
-        return self.strategy.store(i, value)
+        return self.strategy.store(self, i, value)
     def size(self):
         assert self.strategy
         return self.strategy.size()
+    def insert(self, index0, list_w):
+        assert self.strategy
+        return self.strategy.insert(self, index0, list_w)
+    def delete(self, start, end):
+        assert self.strategy
+        return self.strategy.delete(self, start, end)
+    def append(self, list_w):
+        assert self.strategy
+        return self.strategy.append(self, list_w)
+    def pop(self, index0):
+        assert self.strategy
+        return self.strategy.pop(self, index0)
+    def slice(self, start, end):
+        assert self.strategy
+        return self.strategy.slice(self, start, end)
+    def fetch_all(self):
+        assert self.strategy
+        return self.strategy.fetch_all(self)
+    def store_all(self, elements):
+        assert self.strategy
+        return self.strategy.store_all(self, elements)
 
 w_nil = W_Object()
 
@@ -38,10 +59,10 @@ w_nil = W_Object()
 
 class AbstractStrategy(object):
     __metaclass__ = rs.StrategyMetaclass
-    import_from_mixin(rs.AbstractCollection)
-    def __init__(self, size):
-        self.init_strategy(size)
-        self.w_list = None
+    import_from_mixin(rs.AbstractStrategy)
+    import_from_mixin(rs.SafeIndexingMixin)
+    def __init__(self, w_self=None, size=0):
+        pass
     def strategy_factory(self):
         return factory
 
@@ -60,27 +81,22 @@ class Factory(rs.StrategyFactory):
         })
         rs.StrategyFactory.__init__(self, root_class)
     
-    def instantiate_empty(self, strategy_type):
-        return strategy_type(0)
+    def instantiate_strategy(self, strategy_type, w_self=None, size=0):
+        return strategy_type(w_self, size)
     
-    def instantiate_and_switch(self, old_strategy, size, new_cls):
-        inst = new_cls(size)
-        self.switching_log.append((old_strategy, inst))
-        if old_strategy.w_list:
-            old_strategy.w_list.strategy = inst
-        return inst
+    def set_strategy(self, w_list, strategy): 
+        old_strategy = self.get_strategy(w_list)
+        self.switching_log.append((old_strategy, strategy))
+        super(Factory, self).set_strategy(w_list, strategy)
     
     def clear_log(self):
         del self.switching_log[:]
 
 class EmptyStrategy(AbstractStrategy):
     import_from_mixin(rs.EmptyStrategy)
-    def __init__(self, size=0):
-        AbstractStrategy.__init__(self, size)
 
 class NilStrategy(AbstractStrategy):
     import_from_mixin(rs.SingleValueStrategy)
-    import_from_mixin(rs.SafeIndexingMixin)
     def value(self): return w_nil
 
 class GenericStrategy(AbstractStrategy):
@@ -90,17 +106,14 @@ class GenericStrategy(AbstractStrategy):
 
 class WeakGenericStrategy(AbstractStrategy):
     import_from_mixin(rs.WeakGenericStrategy)
-    import_from_mixin(rs.SafeIndexingMixin)
     def default_value(self): return w_nil
     
 class VarsizeGenericStrategy(AbstractStrategy):
     import_from_mixin(rs.GenericStrategy)
-    import_from_mixin(rs.SafeIndexingMixin)
     def default_value(self): return w_nil
 
 class IntegerStrategy(AbstractStrategy):
     import_from_mixin(rs.SingleTypeStrategy)
-    import_from_mixin(rs.SafeIndexingMixin)
     contained_type = W_Integer
     def wrap(self, value): return W_Integer(value)
     def unwrap(self, value): return value.value
@@ -108,7 +121,6 @@ class IntegerStrategy(AbstractStrategy):
 
 class IntegerOrNilStrategy(AbstractStrategy):
     import_from_mixin(rs.TaggingStrategy)
-    import_from_mixin(rs.SafeIndexingMixin)
     contained_type = W_Integer
     def wrap(self, value): return W_Integer(value)
     def unwrap(self, value): return value.value
@@ -116,9 +128,15 @@ class IntegerOrNilStrategy(AbstractStrategy):
     def wrapped_tagged_value(self): return w_nil
     def unwrapped_tagged_value(self): import sys; return sys.maxint
     
-class NonStrategy(IntegerOrNilStrategy):
+@rs.strategy(generalize=[], singleton=False)
+class NonSingletonStrategy(GenericStrategy):
+    def __init__(self, w_list=None, size=0):
+        self.w_list = w_list
+        self.size = size
+
+class NonStrategy(NonSingletonStrategy):
     pass
-    
+
 factory = Factory(AbstractStrategy)
 
 def check_contents(strategy, expected):
@@ -135,32 +153,57 @@ def test_setup():
     pass
 
 def test_factory_setup():
-    expected_strategies = 7
+    expected_strategies = 8
     assert len(factory.strategies) == expected_strategies
     assert len(set(factory.strategies)) == len(factory.strategies)
     for strategy in factory.strategies:
-        assert isinstance(strategy._strategy_instance, strategy)
+        assert isinstance(factory.strategy_instances[strategy], strategy)
+
+def test_metaclass():
+    assert VarsizeGenericStrategy._is_strategy == True
+    assert NonStrategy._is_strategy == False
+    assert IntegerOrNilStrategy._is_strategy == True
+    assert VarsizeGenericStrategy._is_singleton == True
+    assert IntegerOrNilStrategy._is_singleton == True
+    assert NonSingletonStrategy._is_singleton == False
+    assert NonStrategy._is_singleton == False
+    assert NonStrategy.erase is not NonSingletonStrategy.erase
+
+def test_singletons():
+    def do_test_singletons(cls, expected_true):
+        l1 = W_List(cls, 0)
+        l2 = W_List(cls, 0)
+        if expected_true:
+            assert l1.strategy is l2.strategy
+        else:
+            assert l1.strategy is not l2.strategy
+    do_test_singletons(EmptyStrategy, True)
+    do_test_singletons(NonSingletonStrategy, False)
+    do_test_singletons(NonStrategy, False)
+    do_test_singletons(GenericStrategy, True)
 
 def do_test_initialization(cls, default_value=w_nil, is_safe=True):
     size = 10
-    s = cls(size)
-    assert s.size() == size
-    assert s.fetch(0) == default_value
-    assert s.fetch(size/2) == default_value
-    assert s.fetch(size-1) == default_value
-    py.test.raises(IndexError, s.fetch, size)
-    py.test.raises(IndexError, s.fetch, size+1)
-    py.test.raises(IndexError, s.fetch, size+5)
+    l = W_List(cls, size)
+    s = l.strategy
+    assert s.size(l) == size
+    assert s.fetch(l,0) == default_value
+    assert s.fetch(l,size/2) == default_value
+    assert s.fetch(l,size-1) == default_value
+    py.test.raises(IndexError, s.fetch, l, size)
+    py.test.raises(IndexError, s.fetch, l, size+1)
+    py.test.raises(IndexError, s.fetch, l, size+5)
     if is_safe:
-        py.test.raises(IndexError, s.fetch, -1)
+        py.test.raises(IndexError, s.fetch, l, -1)
     else:
-        assert s.fetch(-1) == s.fetch(size - 1)
+        assert s.fetch(l, -1) == s.fetch(l, size - 1)
 
 def test_init_Empty():
-    s = EmptyStrategy()
-    assert s.size() == 0
-    py.test.raises(IndexError, s.fetch, 0)
-    py.test.raises(IndexError, s.fetch, 10)
+    l = W_List(EmptyStrategy, 0)
+    s = l.strategy
+    assert s.size(l) == 0
+    py.test.raises(IndexError, s.fetch, l, 0)
+    py.test.raises(IndexError, s.fetch, l, 10)
     
 def test_init_Nil():
     do_test_initialization(NilStrategy)
@@ -184,19 +227,20 @@ def test_init_IntegerOrNil():
 
 def do_test_store(cls, stored_value=W_Object(), is_safe=True, is_varsize=False):
     size = 10
-    s = cls(size)
+    l = W_List(cls, size)
+    s = l.strategy
     def store_test(index):
-        s.store(index, stored_value)
-        assert s.fetch(index) == stored_value
+        s.store(l, index, stored_value)
+        assert s.fetch(l, index) == stored_value
     store_test(0)
     store_test(size/2)
     store_test(size-1)
     if not is_varsize:
-        py.test.raises(IndexError, s.store, size, stored_value)
-        py.test.raises(IndexError, s.store, size+1, stored_value)
-        py.test.raises(IndexError, s.store, size+5, stored_value)
+        py.test.raises(IndexError, s.store, l, size, stored_value)
+        py.test.raises(IndexError, s.store, l, size+1, stored_value)
+        py.test.raises(IndexError, s.store, l, size+5, stored_value)
     if is_safe:
-        py.test.raises(IndexError, s.store, -1, stored_value)
+        py.test.raises(IndexError, s.store, l, -1, stored_value)
     else:
         store_test(-1)
 
@@ -248,12 +292,12 @@ def test_CheckCanHandle():
     assert_handles(IntegerStrategy, [i], [nil, obj])
     assert_handles(IntegerOrNilStrategy, [nil, i], [obj])
 
-def do_test_transition(OldStrategy, value, NewStrategy):
-    w = W_List(OldStrategy(10))
+def do_test_transition(OldStrategy, value, NewStrategy, initial_size=10):
+    w = W_List(OldStrategy, initial_size)
     old = w.strategy
     w.store(0, value)
     assert isinstance(w.strategy, NewStrategy)
-    assert factory.switching_log == [(old, w.strategy)]
+    assert factory.switching_log == [(None, old), (old, w.strategy)]
 
 def test_AllNil_to_Generic():
     do_test_transition(NilStrategy, W_Object(), GenericStrategy)
@@ -271,11 +315,11 @@ def test_Integer_Generic():
     do_test_transition(IntegerStrategy, W_Object(), GenericStrategy)
 
 def test_Empty_to_VarsizeGeneric():
-    do_test_transition(EmptyStrategy, W_Integer(0), VarsizeGenericStrategy)
+    do_test_transition(EmptyStrategy, W_Integer(0), VarsizeGenericStrategy, 0)
     factory.clear_log()
-    do_test_transition(EmptyStrategy, W_Object(), VarsizeGenericStrategy)
+    do_test_transition(EmptyStrategy, W_Object(), VarsizeGenericStrategy, 0)
     factory.clear_log()
-    do_test_transition(EmptyStrategy, w_nil, VarsizeGenericStrategy)
+    do_test_transition(EmptyStrategy, w_nil, VarsizeGenericStrategy, 0)
 
 def test_TaggingValue_not_storable():
     tag = IntegerOrNilStrategy(10).unwrapped_tagged_value() # sys.maxint
@@ -284,31 +328,26 @@ def test_TaggingValue_not_storable():
 # TODO - Add VarsizeInteger, Übergang nach Empty etc
 # - store maxint in IntegerOrNil
 
-# TODO Test slice, fetch_all, append, pop
+# TODO Test slice, fetch_all, append, pop, store_all
 
 # === Test Weak Strategy
 # TODO
 
 # === Other tests
 
-def test_metaclass():
-    assert VarsizeGenericStrategy._is_strategy == True
-    assert NonStrategy._is_strategy == False
-    assert IntegerOrNilStrategy._is_strategy == True
-
 def test_optimized_strategy_switch(monkeypatch):
-    s = NilStrategy(5)
-    l = W_List(s)
+    l = W_List(NilStrategy, 5)
+    s = l.strategy
     s.copied = 0
-    def copy_from_default(self, other):
-        assert False, "The default copy_from() routine should not be called!"
-    def copy_from_special(self, other):
+    def convert_storage_from_default(self, w_self, other):
+        assert False, "The default convert_storage_from() should not be called!"
+    def convert_storage_from_special(self, w_self, other):
         s.copied += 1
     
-    monkeypatch.setattr(AbstractStrategy, "copy_from_NilStrategy", copy_from_special)
+    monkeypatch.setattr(AbstractStrategy, "convert_storage_from_NilStrategy", convert_storage_from_special)
+    monkeypatch.setattr(AbstractStrategy, "convert_storage_from", convert_storage_from_default)
     try:
-        factory.switch_strategy(s, IntegerOrNilStrategy)
+        factory.switch_strategy(l, s, IntegerOrNilStrategy)
     finally:
         monkeypatch.undo()
     assert s.copied == 1, "Optimized switching routine not called exactly one time."
-    
