@@ -255,7 +255,6 @@ def test_store_IntegerOrNil():
 
 def do_test_insert(cls, values):
     l = W_List(cls, 0)
-    s = l.strategy
     assert len(values) >= 6
     values1 = values[0:2]
     values2 = values[2:4]
@@ -283,7 +282,32 @@ def test_insert_IntegerOrNil():
     
 # === Test Delete
 
-# TODO
+def do_test_delete(cls, values):
+    l = W_List(cls, len(values))
+    assert len(values) >= 6
+    l.store_all(values)
+    l.delete(2, 4)
+    del values[2: 4]
+    check_contents(l, values)
+    l.delete(1, 2)
+    del values[1: 2]
+    check_contents(l, values)
+
+def test_delete_Nil():
+    do_test_delete(NilStrategy, [w_nil]*6)
+
+def test_delete_Generic():
+    do_test_delete(GenericStrategy, [W_Object() for _ in range(6)])
+    
+def test_delete_WeakGeneric():
+    do_test_delete(WeakGenericStrategy, [W_Object() for _ in range(6)])
+    
+def test_delete_Integer():
+    do_test_delete(IntegerStrategy, [W_Integer(x) for x in range(6)])
+    
+def test_delete_IntegerOrNil():
+    do_test_delete(IntegerOrNilStrategy, [w_nil]+[W_Integer(x) for x in range(4)]+[w_nil])
+    do_test_delete(IntegerOrNilStrategy, [w_nil]*6)
 
 # === Test Transitions
 
