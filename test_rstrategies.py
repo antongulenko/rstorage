@@ -31,7 +31,7 @@ class W_List(W_AbstractObject):
         return self.strategy.store(self, i, value)
     def size(self):
         assert self.strategy
-        return self.strategy.size()
+        return self.strategy.size(self)
     def insert(self, index0, list_w):
         assert self.strategy
         return self.strategy.insert(self, index0, list_w)
@@ -72,12 +72,11 @@ class Factory(rs.StrategyFactory):
     
     def __init__(self, root_class):
         self.decorate_strategies({
-            EmptyStrategy: [VarsizeGenericStrategy],
+            EmptyStrategy: [GenericStrategy],
             NilStrategy: [IntegerOrNilStrategy, GenericStrategy],
             GenericStrategy: [],
             WeakGenericStrategy: [],
-            VarsizeGenericStrategy: [],
-            IntegerStrategy: [IntegerOrNilStrategy, GenericStrategy],
+                IntegerStrategy: [IntegerOrNilStrategy, GenericStrategy],
             IntegerOrNilStrategy: [GenericStrategy],
         })
         rs.StrategyFactory.__init__(self, root_class)
@@ -109,10 +108,6 @@ class WeakGenericStrategy(AbstractStrategy):
     import_from_mixin(rs.WeakGenericStrategy)
     def default_value(self): return w_nil
     
-class VarsizeGenericStrategy(AbstractStrategy):
-    import_from_mixin(rs.GenericStrategy)
-    def default_value(self): return w_nil
-
 class IntegerStrategy(AbstractStrategy):
     import_from_mixin(rs.SingleTypeStrategy)
     contained_type = W_Integer
@@ -140,10 +135,10 @@ class NonStrategy(NonSingletonStrategy):
 
 factory = Factory(AbstractStrategy)
 
-def check_contents(strategy, expected):
-    assert strategy.size() == len(expected)
+def check_contents(list, expected):
+    assert list.size() == len(expected)
     for i, val in enumerate(expected):
-        assert strategy.fetch(i) == val
+        assert list.fetch(i) == val
 
 def teardown():
     factory.clear_log()
@@ -154,17 +149,15 @@ def test_setup():
     pass
 
 def test_factory_setup():
-    expected_strategies = 8
+    expected_strategies = 7
     assert len(factory.strategies) == expected_strategies
     assert len(set(factory.strategies)) == len(factory.strategies)
     for strategy in factory.strategies:
         assert isinstance(factory.strategy_instances[strategy], strategy)
 
 def test_metaclass():
-    assert VarsizeGenericStrategy._is_strategy == True
     assert NonStrategy._is_strategy == False
     assert IntegerOrNilStrategy._is_strategy == True
-    assert VarsizeGenericStrategy._is_singleton == True
     assert IntegerOrNilStrategy._is_singleton == True
     assert NonSingletonStrategy._is_singleton == False
     assert NonStrategy._is_singleton == False
@@ -215,9 +208,6 @@ def test_init_Generic():
 def test_init_WeakGeneric():
     do_test_initialization(WeakGenericStrategy)
     
-def test_init_VarsizeGeneric():
-    do_test_initialization(VarsizeGenericStrategy)
-    
 def test_init_Integer():
     do_test_initialization(IntegerStrategy, default_value=W_Integer(0))
     
@@ -254,9 +244,6 @@ def test_store_Generic():
 def test_store_WeakGeneric():
     do_test_store(WeakGenericStrategy, stored_value=w_nil)
     
-def test_store_VarsizeGeneric():
-    do_test_store(VarsizeGenericStrategy, is_varsize=True)
-    
 def test_store_Integer():
     do_test_store(IntegerStrategy, stored_value=W_Integer(100))
     
@@ -264,11 +251,37 @@ def test_store_IntegerOrNil():
     do_test_store(IntegerOrNilStrategy, stored_value=W_Integer(100))
     do_test_store(IntegerOrNilStrategy, stored_value=w_nil)
 
-# === Test Delete
-
-# TODO
-
 # === Test Insert
+
+def do_test_insert(cls, values):
+    l = W_List(cls, 0)
+    s = l.strategy
+    assert len(values) >= 6
+    values1 = values[0:2]
+    values2 = values[2:4]
+    values3 = values[4:6]
+    l.insert(0, values1+values3)
+    check_contents(l, values1+values3)
+    l.insert(2, values2)
+    check_contents(l, values)
+
+def test_insert_Nil():
+    do_test_insert(NilStrategy, [w_nil]*6)
+
+def test_insert_Generic():
+    do_test_insert(GenericStrategy, [W_Object() for _ in range(6)])
+    
+def test_insert_WeakGeneric():
+    do_test_insert(WeakGenericStrategy, [W_Object() for _ in range(6)])
+    
+def test_insert_Integer():
+    do_test_insert(IntegerStrategy, [W_Integer(x) for x in range(6)])
+    
+def test_insert_IntegerOrNil():
+    do_test_insert(IntegerOrNilStrategy, [w_nil]+[W_Integer(x) for x in range(4)]+[w_nil])
+    do_test_insert(IntegerOrNilStrategy, [w_nil]*6)
+    
+# === Test Delete
 
 # TODO
 
@@ -289,7 +302,6 @@ def test_CheckCanHandle():
     assert_handles(NilStrategy, [nil], [obj, i])
     assert_handles(GenericStrategy, [nil, obj, i], [])
     assert_handles(WeakGenericStrategy, [nil, obj, i], [])
-    assert_handles(VarsizeGenericStrategy, [nil, obj, i], [])
     assert_handles(IntegerStrategy, [i], [nil, obj])
     assert_handles(IntegerOrNilStrategy, [nil, i], [obj])
 
@@ -314,13 +326,6 @@ def test_Integer_to_IntegerOrNil():
 
 def test_Integer_Generic():
     do_test_transition(IntegerStrategy, W_Object(), GenericStrategy)
-
-def test_Empty_to_VarsizeGeneric():
-    do_test_transition(EmptyStrategy, W_Integer(0), VarsizeGenericStrategy, 0)
-    factory.clear_log()
-    do_test_transition(EmptyStrategy, W_Object(), VarsizeGenericStrategy, 0)
-    factory.clear_log()
-    do_test_transition(EmptyStrategy, w_nil, VarsizeGenericStrategy, 0)
 
 def test_TaggingValue_not_storable():
     tag = IntegerOrNilStrategy(10).unwrapped_tagged_value() # sys.maxint
