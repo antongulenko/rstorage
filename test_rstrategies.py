@@ -20,6 +20,7 @@ class W_Integer(W_AbstractObject):
 class W_List(W_AbstractObject):
     rs.make_accessors()
     def __init__(self, strategy=None, size=0, elements=None):
+        self.strategy = None
         if strategy:
             factory.set_initial_strategy(self, strategy, size, elements)
     def fetch(self, i):
@@ -167,7 +168,7 @@ def test_metaclass():
     assert IntegerOrNilStrategy._is_singleton == True
     assert NonSingletonStrategy._is_singleton == False
     assert NonStrategy._is_singleton == False
-    assert NonStrategy.erase is not NonSingletonStrategy.erase
+    assert NonStrategy.get_storage is not NonSingletonStrategy.get_storage
 
 def test_singletons():
     def do_test_singletons(cls, expected_true):
