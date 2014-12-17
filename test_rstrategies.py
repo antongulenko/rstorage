@@ -283,9 +283,8 @@ def test_insert_IntegerOrNil():
 # === Test Delete
 
 def do_test_delete(cls, values):
-    l = W_List(cls, len(values))
     assert len(values) >= 6
-    l.store_all(values)
+    l = W_List(cls, len(values), values)
     l.delete(2, 4)
     del values[2: 4]
     check_contents(l, values)
@@ -355,10 +354,53 @@ def test_TaggingValue_not_storable():
     tag = IntegerOrNilStrategy(10).unwrapped_tagged_value() # sys.maxint
     do_test_transition(IntegerOrNilStrategy, W_Integer(tag), GenericStrategy)
 
-# TODO - Add VarsizeInteger, Übergang nach Empty etc
-# - store maxint in IntegerOrNil
+# TODO - Test transition from varsize back to Empty
 
-# TODO Test slice, fetch_all, append, pop, store_all
+# === Test helper methods
+
+def generic_list():
+    values = [W_Object() for _ in range(6)]
+    return W_List(GenericStrategy, len(values), values), values
+
+def test_slice():
+    l, v = generic_list()
+    assert l.slice(2, 4) == v[2:4]
+
+def test_fetch_all():
+    l, v = generic_list()
+    assert l.fetch_all() == v
+
+def test_append():
+    l, v = generic_list()
+    o1 = W_Object()
+    o2 = W_Object()
+    l.append([o1])
+    assert l.fetch_all() == v + [o1]
+    l.append([o1, o2])
+    assert l.fetch_all() == v + [o1, o1, o2]
+
+def test_pop():
+    l, v = generic_list()
+    o = l.pop(3)
+    del v[3]
+    assert l.fetch_all() == v
+    o = l.pop(3)
+    del v[3]
+    assert l.fetch_all() == v
+
+def test_store_all():
+    l, v = generic_list()
+    v2 = [W_Object() for _ in range(4) ]
+    v3 = [W_Object() for _ in range(l.size()) ]
+    assert v2 != v
+    assert v3 != v
+    
+    l.store_all(v2)
+    assert l.fetch_all() == v2+v[4:]
+    l.store_all(v3)
+    assert l.fetch_all() == v3
+    
+    py.test.raises(IndexError, l.store_all, [W_Object() for _ in range(8) ])
 
 # === Test Weak Strategy
 # TODO
