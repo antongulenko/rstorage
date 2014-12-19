@@ -272,6 +272,7 @@ class AbstractStrategy(object):
         # This will be overwritten in patch_strategy_class
         new_strategy.convert_storage_from(w_self, self)
     
+    @jit.unroll_safe
     def convert_storage_from(self, w_self, previous_strategy):
         # This is a very unefficient (but most generic) way to do this.
         # Subclasses should specialize.
@@ -375,6 +376,7 @@ class StrategyWithStorage(AbstractStrategy):
         default = self._unwrap(self.default_value())
         self.set_storage(w_self, [default] * initial_size)
     
+    @jit.unroll_safe
     def convert_storage_from(self, w_self, previous_strategy):
         size = previous_strategy.size(w_self)
         new_storage = [ self._unwrap(previous_strategy.fetch(w_self, i))
