@@ -62,10 +62,10 @@ class AbstractStrategy(object):
     __metaclass__ = rs.StrategyMetaclass
     import_from_mixin(rs.AbstractStrategy)
     import_from_mixin(rs.SafeIndexingMixin)
-    def __init__(self, w_self=None, size=0):
-        pass
+    def __init__(self, factory, w_self=None, size=0):
+        self.factory = factory
     def strategy_factory(self):
-        return factory
+        return self.factory
 
 class Factory(rs.StrategyFactory):
     switching_log = []
@@ -82,7 +82,7 @@ class Factory(rs.StrategyFactory):
         rs.StrategyFactory.__init__(self, root_class)
     
     def instantiate_strategy(self, strategy_type, w_self=None, size=0):
-        return strategy_type(w_self, size)
+        return strategy_type(self, w_self, size)
     
     def set_strategy(self, w_list, strategy): 
         old_strategy = self.get_strategy(w_list)
@@ -126,7 +126,8 @@ class IntegerOrNilStrategy(AbstractStrategy):
     
 @rs.strategy(generalize=[], singleton=False)
 class NonSingletonStrategy(GenericStrategy):
-    def __init__(self, w_list=None, size=0):
+    def __init__(self, factory, w_list=None, size=0):
+        super(NonSingletonStrategy, self).__init__(factory, w_list, size)
         self.w_list = w_list
         self.size = size
 
@@ -153,7 +154,15 @@ def test_factory_setup():
     assert len(factory.strategies) == expected_strategies
     assert len(set(factory.strategies)) == len(factory.strategies)
     for strategy in factory.strategies:
-        assert isinstance(factory.strategy_instances[strategy], strategy)
+        assert isinstance(factory.strategy_singleton_instance(strategy), strategy)
+
+def test_factory_setup_singleton_instances():
+    new_factory = Factory(AbstractStrategy)
+    s1 = factory.strategy_singleton_instance(GenericStrategy)
+    s2 = new_factory.strategy_singleton_instance(GenericStrategy)
+    assert s1 is not s2
+    assert s1.strategy_factory() is factory
+    assert s2.strategy_factory() is new_factory
 
 def test_metaclass():
     assert NonStrategy._is_strategy == False
