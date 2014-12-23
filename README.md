@@ -9,7 +9,7 @@ The original paper describing the optimization "Storage Strategies for collectio
 
 So far, this library has been adpoted by 3 VMs: [RSqueak](https://github.com/HPI-SWA-Lab/RSqueak), [Topaz](https://github.com/topazproject/topaz) ([Forked here](https://github.com/antongulenko/topaz/tree/rstrategies)) and [Pycket](https://github.com/samth/pycket) ([Forked here](https://github.com/antongulenko/pycket/tree/rstrategies)).
 
-### Concept
+#### Concept
 
 Collections are often used homogeneously, i.e. they contain only objects of the same type.
 Primitive numeric types like ints or floats are especially interesting for optimization.
@@ -24,16 +24,16 @@ collection --> strategy (singleton object)<br/>
 
 ## Usage
 
-### Basics
+#### Basics
 
 The VM should have a class or class hierarchy for collections in a broader sense, for example types like arrays, lists or regular objects.
 This library supports fixed sized and variable sized collections.
 In order to extend these classes and use strategies, the library need access to two attributes of collection objects: strategy and storage.
-The easies way is adding the following line to the body of the root collection class:
+The easiest way is adding the following line to the body of the root collection class:
 ```
 rstrategies.make_accessors(strategy='strategy', storage='storage')
 ```
-This will generate accessor methods ```_[get/set]_[storage/strategy]()``` for the attributes named in the call.
+This will generate the 4 accessor methods ```_[get/set]_[storage/strategy]()``` for the attributes named in the call.
 Alternatively, implement these methods manually.
 
 Next, the strategy classes must be defined. This requires a small class hierarchy with a dedicated superclass.
@@ -47,10 +47,10 @@ In the definition of this superclass, include the following lines:
 
 ```import_from_mixin``` can be found in ```rpython.rlib.objectmodel```.
 If index-checking is performed safely at other places in the VM, you can use ```rstrategies.UnsafeIndexingMixin``` instead.
-If you need your own metaclass, you can combine yours with the rstrategies one using multiple inheritance (like here)[https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage_contexts.py#L23].
+If you need your own metaclass, you can combine yours with the rstrategies one using multiple inheritance [like here](https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage_contexts.py#L23).
 Also implement a ```storage_factory()``` method, which returns an instance of ```rstrategies.StorageFactory```, which is described below.
 
-### Strategy classes
+#### Strategy classes
 
 Now you can create the actual strategy classes, subclassing them from the single superclass.
 The following list summarizes the basic strategies available.
@@ -74,10 +74,10 @@ Include one of these mixin classes using ```import_from_mixin```.
 The mixin classes contain comments describing methods or fields which are also required in the strategy class in order to use them.
 Additionally, add the @rstrategies.strategy(generalize=alist) decorator to all strategy classes.
 The list parameter must contain all strategies, which the decorated strategy can switch to, if it can not represent a new element anymore.
-(Example)[https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage.py#L64] for an implemented strategy.
+[Example](https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage.py#L64) for an implemented strategy.
 See the other strategy classes behind this link for more examples.
 
-### Strategy Factory
+#### Strategy Factory
 
 The last part is subclassing ```rstrategies.StrategyFactory```, overwriting the method ```instantiate_strategy``` if necessary, passing the strategies root class to the constructor.
 The factory has the methods ```switch_strategy```, ```set_initial_strategy```, ```strategy_type_for``` which can be used by the VM code to use the mechanism behind strategies.
@@ -85,11 +85,11 @@ See the comments in the source code.
 
 The strategy mixins offer the following methods to manipulate the contents of the collection:
 * basic API
-    * size
+    * ```size```
 * fixed size API
-    * store, fetch, slice, store_all, fetch_all
+    * ```store```, ```fetch```, ```slice```, ```store_all```, ```fetch_all```
 * variable size API
-    * insert, delete, append, pop
+    * ```insert```, ```delete```, ```append```, ```pop```
 If the collection has a fixed size, simply never use any of the variable size methods in the VM code.
 Since the strategies are singletons, these methods need the collection object as first parameter.
 For convenience, more fitting accessor methods should be implemented on the collection class itself.
