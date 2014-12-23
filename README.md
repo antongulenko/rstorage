@@ -15,12 +15,9 @@ Collections are often used homogeneously, i.e. they contain only objects of the 
 Primitive numeric types like ints or floats are especially interesting for optimization.
 These cases can be optimized by storing the unboxed data of these objects in consecutive memory.
 This is done by letting a special "strategy" object handle the entire storage of a collection.
-The collection object holds separate references to its strategy and its storage, like shown here below.
-Every operation on the collection is delegated to the strategy.
-When needed, the strategy can be switched to a more suitable one, which might require converting the storage array.
-
-collection --> strategy (singleton object)<br/>
-          \--> storage (list of values)
+The collection object holds two separate references: one to its strategy and one to its storage.
+Every operation on the collection is delegated to the strategy, which accesses the storage when needed.
+The strategy can be switched to a more suitable one, which might require converting the storage array.
 
 ## Usage
 
