@@ -87,6 +87,7 @@ The strategy mixins offer the following methods to manipulate the contents of th
     * ```store```, ```fetch```, ```slice```, ```store_all```, ```fetch_all```
 * variable size API
     * ```insert```, ```delete```, ```append```, ```pop```
+
 If the collection has a fixed size, simply never use any of the variable size methods in the VM code.
 Since the strategies are singletons, these methods need the collection object as first parameter.
 For convenience, more fitting accessor methods should be implemented on the collection class itself.

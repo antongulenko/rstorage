@@ -1,8 +1,29 @@
 
 import re, os, sys, operator
 
+"""
+This script parses a log produced by rstrategies_logger.py into a graph and converts it to various outputs.
+The most useful outputs are the dot* commands producing a visualization of the log using the dot-command of graphviz.
+Every strategy is a node in the graph, and the edges are collection that transition between two strategies
+at some point during the log.
+Artificial nodes are created for log entries without an explicit source node. These are the events when a
+collection is created.
+The input to this script is a logfile, a command and optional flags.
+If the logfile includes one of the AVAILABLE_VMS as a substring, the following three global variables
+are automatically configured.
+The script should work without these configurations, but the output will probably not be that pretty.
+To avoid errors, use the -a flag when running without proper configuration.
+"""
+
+# This should contain a full list of storage nodes (strategies).
+# All strategies not included here will be combined into a single "Other"-node, if the -a flag is not given.
 STORAGE_NODES = []
+
+# This allows arbitrary renamings of storage strategy nodes
 NODE_RENAMINGS = {}
+
+# Artificial storage-source nodes are automatically named like the associated operation.
+# This dict allows customizing the names of these nodes.
 STORAGE_SOURCES = {}
 
 def SET_VM(vm_name):
@@ -318,7 +339,7 @@ class StorageNode(object):
     def __add__(self, other):
         result = StorageNode("%s %s" % (self.name, other.name))
         result.incoming = self.merge_edge_sets(self.incoming, other.incoming, "origin")
-        # TODO bullshit code
+        # TODO bad code
         for edge in result.incoming:
             edge.target = result
         result.outgoing = self.merge_edge_sets(self.outgoing, other.outgoing, "target")
@@ -400,7 +421,7 @@ class StorageGraph(object):
         if new_name is not None:
             new_node.name = new_name
         self.nodes[new_node.name] = new_node
-        # TODO bullshit code
+        # TODO bad code
         for node in collapsed_nodes:
             for edge in node.incoming:
                 edge.origin.outgoing.remove(edge)
@@ -501,14 +522,23 @@ def command_print_dot(logfile, flags):
     print "*/"
     print dot_string(graph, flags)
 
-def command_dot(logfile, flags):
+def run_dot(logfile, flags, output_type):
     import subprocess
     dot = dot_string(make_graph(logfile, flags), flags)
-    command = ["dot", "-Tjpg", "-o%s.jpg" % flags.logfile]
+    command = ["dot", "-T%s" % output_type, "-o%s.%s" % (flags.logfile, output_type)]
     print "Running:\n%s" % " ".join(command)
     p = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = p.communicate(input=dot)[0]
     print output
+
+def command_dot(logfile, flags):
+    run_dot(logfile, flags, "jpg")
+def command_dot_ps(logfile, flags):
+    run_dot(logfile, flags, "ps")
+def command_dot_pdf(logfile, flags):
+    run_dot(logfile, flags, "pdf")
+def command_dot_svg(logfile, flags):
+    run_dot(logfile, flags, "svg")
 
 def dot_string(graph, flags):
     result = "digraph G {"
