@@ -1,16 +1,15 @@
-rstrategies
-========
+# rstrategies
+
 A library to implement storage strategies in VMs based on the RPython toolchain.
 rstrategies can be used in VMs for any language or language family.
 
-This library has been developed as part of a Masters Thesis by (Anton Gulenko)[https://github.com/antongulenko].
+This library has been developed as part of a Masters Thesis by [Anton Gulenko](https://github.com/antongulenko).
 
-The original paper describing the optimization "Storage Strategies for collections in dynamically typed languages" by C.F. Bolz, L. Diekmann and L. Tratt can be found (here)[http://stups.hhu.de/mediawiki/images/3/3b/Pub-BoDiTr13_246.pdf].
+The original paper describing the optimization "Storage Strategies for collections in dynamically typed languages" by C.F. Bolz, L. Diekmann and L. Tratt can be found [here](http://stups.hhu.de/mediawiki/images/3/3b/Pub-BoDiTr13_246.pdf).
 
-So far, this library has been adpoted by 3 VMs: (RSqueak)[https://github.com/HPI-SWA-Lab/RSqueak], (Topaz)[https://github.com/topazproject/topaz] ((Forked here)[https://github.com/antongulenko/topaz/tree/rstrategies]) and (Pycket)[] ((Forked here))[https://github.com/antongulenko/pycket/tree/rstrategies]).
+So far, this library has been adpoted by 3 VMs: [RSqueak](https://github.com/HPI-SWA-Lab/RSqueak), [Topaz](https://github.com/topazproject/topaz) ([Forked here](https://github.com/antongulenko/topaz/tree/rstrategies)) and [Pycket](https://github.com/samth/pycket) ([Forked here](https://github.com/antongulenko/pycket/tree/rstrategies)).
 
-Concept
-----
+### Concept
 
 Collections are often used homogeneously, i.e. they contain only objects of the same type.
 Primitive numeric types like ints or floats are especially interesting for optimization.
@@ -20,14 +19,12 @@ The collection object holds separate references to its strategy and its storage,
 Every operation on the collection is delegated to the strategy.
 When needed, the strategy can be switched to a more suitable one, which might require converting the storage array.
 
-collection --> strategy (singleton object)
+collection --> strategy (singleton object)<br/>
           \--> storage (list of values)
 
-Usage
------
+## Usage
 
-Basics
----
+### Basics
 
 The VM should have a class or class hierarchy for collections in a broader sense, for example types like arrays, lists or regular objects.
 This library supports fixed sized and variable sized collections.
@@ -53,8 +50,7 @@ If index-checking is performed safely at other places in the VM, you can use ```
 If you need your own metaclass, you can combine yours with the rstrategies one using multiple inheritance (like here)[https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage_contexts.py#L23].
 Also implement a ```storage_factory()``` method, which returns an instance of ```rstrategies.StorageFactory```, which is described below.
 
-Strategy classes
----
+### Strategy classes
 
 Now you can create the actual strategy classes, subclassing them from the single superclass.
 The following list summarizes the basic strategies available.
@@ -81,8 +77,7 @@ The list parameter must contain all strategies, which the decorated strategy can
 (Example)[https://github.com/HPI-SWA-Lab/RSqueak/blob/master/spyvm/storage.py#L64] for an implemented strategy.
 See the other strategy classes behind this link for more examples.
 
-Strategy Factory
----
+### Strategy Factory
 
 The last part is subclassing ```rstrategies.StrategyFactory```, overwriting the method ```instantiate_strategy``` if necessary, passing the strategies root class to the constructor.
 The factory has the methods ```switch_strategy```, ```set_initial_strategy```, ```strategy_type_for``` which can be used by the VM code to use the mechanism behind strategies.
