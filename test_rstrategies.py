@@ -428,7 +428,7 @@ def test_optimized_strategy_switch(monkeypatch):
     monkeypatch.setattr(AbstractStrategy, "convert_storage_from_NilStrategy", convert_storage_from_special)
     monkeypatch.setattr(AbstractStrategy, "convert_storage_from", convert_storage_from_default)
     try:
-        factory.switch_strategy(l, s, IntegerOrNilStrategy)
+        factory.switch_strategy(l, IntegerOrNilStrategy)
     finally:
         monkeypatch.undo()
     assert s.copied == 1, "Optimized switching routine not called exactly one time."
